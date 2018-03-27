@@ -22,7 +22,7 @@
 		(XTestFakeKeyEvent(display, \
 		                   XKeysymToKeycode(display, key), \
 		                   is_press, CurrentTime), \
-		 XSync(display, false))
+		 XFlush(display))
 	#define X_KEY_EVENT_WAIT(display, key, is_press) \
 		(X_KEY_EVENT(display, key, is_press), \
 		 microsleep(DEADBEEF_UNIFORM(0.0, 62.5)))
@@ -162,25 +162,25 @@ void tapKeyCode(MMKeyCode code, MMKeyFlags flags)
 }
 
 void toggleKey(char c, const bool down, MMKeyFlags flags)
-{
+{	
 	MMKeyCode keyCode = keyCodeForChar(c);
-
+	
 	//Prevent unused variable warning for Mac and Linux.
 #if defined(IS_WINDOWS)
 	int modifiers;
-#endif
-
+#endif	
+	
 	if (isupper(c) && !(flags & MOD_SHIFT)) {
 		flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
 	}
-
+	
 #if defined(IS_WINDOWS)
 	modifiers = keyCode >> 8; // Pull out modifers.
 	if ((modifiers & 1) != 0) flags |= MOD_SHIFT; // Uptdate flags from keycode modifiers.
     if ((modifiers & 2) != 0) flags |= MOD_CONTROL;
     if ((modifiers & 4) != 0) flags |= MOD_ALT;
     keyCode = keyCode & 0xff; // Mask out modifiers.
-#endif
+#endif	
 	toggleKeyCode(keyCode, down, flags);
 }
 
@@ -190,13 +190,16 @@ void tapKey(char c, MMKeyFlags flags)
 	toggleKey(c, false, flags);
 }
 
-#if defined(IS_MACOSX)
-void toggleUnicodeKey(unsigned long ch, const bool down)
+
+void toggleUnicode(const unsigned value, const bool down)
 {
+ 
+  #if defined(IS_MACOSX)
+   UniChar ch = (UniChar)value;
 	/* This function relies on the convenient
 	 * CGEventKeyboardSetUnicodeString(), which allows us to not have to
 	 * convert characters to a keycode, but does not support adding modifier
-	 * flags. It is therefore only used in typeString() and typeStringDelayed()
+	 * flags. It is therefore only used in typeStringDelayed()
 	 * -- if you need modifier keys, use the above functions instead. */
 	CGEventRef keyEvent = CGEventCreateKeyboardEvent(NULL, 0, down);
 	if (keyEvent == NULL) {
@@ -204,43 +207,55 @@ void toggleUnicodeKey(unsigned long ch, const bool down)
 		return;
 	}
 
-	if (ch > 0xFFFF) {
-		// encode to utf-16 if necessary
-		unsigned short surrogates[] = {
-			0xD800 + ((ch - 0x10000) >> 10),
-			0xDC00 + (ch & 0x3FF)
-		};
-
-		CGEventKeyboardSetUnicodeString(keyEvent, 2, &surrogates);
-	} else {
-		CGEventKeyboardSetUnicodeString(keyEvent, 1, &ch);
-	}
+	CGEventKeyboardSetUnicodeString(keyEvent, 1, &ch);
 
 	CGEventPost(kCGSessionEventTap, keyEvent);
 	CFRelease(keyEvent);
+  #elif defined(IS_WINDOWS)
+		INPUT ip;
+
+		// Set up a generic keyboard event.
+		ip.type = INPUT_KEYBOARD;
+		ip.ki.wVk = value; // Virtual-key code
+		ip.ki.wScan = value; // Hardware scan code for key
+		ip.ki.time = 0; // System will provide its own time stamp.
+		ip.ki.dwExtraInfo = 0; // No extra info. Use the GetMessageExtraInfo function to obtain this information if needed.
+		
+    if (down){
+      ip.ki.dwFlags = KEYEVENTF_UNICODE; // KEYEVENTF_KEYUP for key release.
+    }else{
+      ip.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP; // KEYEVENTF_KEYUP for key release.
+    }
+
+		SendInput(1, &ip, sizeof(INPUT));
+  #endif
 }
 
-void toggleUniKey(char c, const bool down)
-{
-	toggleUnicodeKey(c, down);
-}
-#else
-	#define toggleUniKey(c, down) toggleKey(c, down, MOD_NONE)
-#endif
 
-static void tapUniKey(char c)
+void unicodeTap(const unsigned value)
 {
-	toggleUniKey(c, true);
-	toggleUniKey(c, false);
+	toggleUnicode(value, true);
+	toggleUnicode(value, false);
 }
 
-void typeString(const char *str)
+void unicodeToggle(const unsigned value, const bool down)
 {
+	toggleUnicode(value, down);
+}
+
+void typeStringDelayed(const char *str, const unsigned cpm)
+{
+	unsigned long n;
 	unsigned short c;
 	unsigned short c1;
 	unsigned short c2;
 	unsigned short c3;
-	unsigned long n;
+
+	/* Characters per second */
+	const double cps = (double)cpm / 60.0;
+
+	/* Average milli-seconds per character */
+	const double mspc = (cps == 0.0) ? 0.0 : 1000.0 / cps;
 
 	while (*str != '\0') {
 		c = *str++;
@@ -267,27 +282,10 @@ void typeString(const char *str)
 			n = ((c & 0x07) << 18) | (c1 << 12) | (c2 << 6) | c3;
 		}
 
-		#if defined(IS_MACOSX)
-		toggleUnicodeKey(n, true);
-		toggleUnicodeKey(n, false);
-		#else
-		toggleUniKey(n, true);
-		toggleUniKey(n, false);
-		#endif
+		unicodeTap(n);
 
-	}
-}
-
-void typeStringDelayed(const char *str, const unsigned cpm)
-{
-	/* Characters per second */
-	const double cps = (double)cpm / 60.0;
-
-	/* Average milli-seconds per character */
-	const double mspc = (cps == 0.0) ? 0.0 : 1000.0 / cps;
-
-	while (*str != '\0') {
-		tapUniKey(*str++);
-		microsleep(mspc + (DEADBEEF_UNIFORM(0.0, 62.5)));
+		if (mspc > 0) {
+			microsleep(mspc + (DEADBEEF_UNIFORM(0.0, 62.5)));
+		}
 	}
 }

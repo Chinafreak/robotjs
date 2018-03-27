@@ -247,7 +247,7 @@ NAN_METHOD(scrollMouse)
 	{
     	return Nan::ThrowError("Invalid number of arguments.");
 	}
-
+	
 	int x = info[0]->Int32Value();
 	int y = info[1]->Int32Value();
 
@@ -550,7 +550,7 @@ NAN_METHOD(keyToggle)
 		}
 	}
 
-	//Get the acutal key.
+	//Get the actual key.
 	switch(CheckKeyCodes(k, &key))
 	{
 		case -1:
@@ -561,36 +561,88 @@ NAN_METHOD(keyToggle)
 			break;
 		default:
 			toggleKeyCode(key, down, flags);
-			  microsleep(keyboardDelay);
+			microsleep(keyboardDelay);
 	}
 
 	info.GetReturnValue().Set(Nan::New(1));
 }
 
+NAN_METHOD(unicodeTap)
+{
+	size_t value = info[0]->Int32Value();
+
+	if (value != 0) {
+		unicodeTap(value);
+		info.GetReturnValue().Set(Nan::New(1));
+	} else {
+		return Nan::ThrowError("Invalid character typed.");
+	}
+}
+
+NAN_METHOD(unicodeToggle)
+{
+	size_t value = info[0]->Int32Value();
+  bool down;
+
+	if (value != 0) {
+    if (info.Length() > 1){
+	    char *d;
+
+	    Nan::Utf8String dstr(info[1]);
+	    d = *dstr;
+
+	    if (strcmp(d, "down") == 0)
+	    {
+	    	down = true;
+	    }
+	    else if (strcmp(d, "up") == 0)
+	    {
+	    	down = false;
+	    }
+	    else
+	    {
+	    	return Nan::ThrowError("Invalid key state specified.");
+	    }
+    }
+		unicodeToggle(value, down);
+		info.GetReturnValue().Set(Nan::New(1));
+	} else {
+		return Nan::ThrowError("Invalid character typed.");
+	}
+}
+
 NAN_METHOD(typeString)
 {
-	char *str;
-	Nan::Utf8String string(info[0]);
+	if (info.Length() > 0) {
+		char *str;
+		Nan::Utf8String string(info[0]);
 
-	str = *string;
+		str = *string;
 
-	typeString(str);
+		typeStringDelayed(str, 0);
 
-	info.GetReturnValue().Set(Nan::New(1));
+		info.GetReturnValue().Set(Nan::New(1));
+	} else {
+		return Nan::ThrowError("Invalid number of arguments.");
+	}
 }
 
 NAN_METHOD(typeStringDelayed)
 {
-	char *str;
-	Nan::Utf8String string(info[0]);
+	if (info.Length() > 0) {
+		char *str;
+		Nan::Utf8String string(info[0]);
 
-	str = *string;
+		str = *string;
 
-	size_t cpm = info[1]->Int32Value();
+		size_t cpm = info[1]->Int32Value();
 
-	typeStringDelayed(str, cpm);
+		typeStringDelayed(str, cpm);
 
-	info.GetReturnValue().Set(Nan::New(1));
+		info.GetReturnValue().Set(Nan::New(1));
+	} else {
+		return Nan::ThrowError("Invalid number of arguments.");
+	}
 }
 
 NAN_METHOD(setKeyboardDelay)
@@ -843,6 +895,12 @@ NAN_MODULE_INIT(InitAll)
 
 	Nan::Set(target, Nan::New("keyToggle").ToLocalChecked(),
 		Nan::GetFunction(Nan::New<FunctionTemplate>(keyToggle)).ToLocalChecked());
+
+	Nan::Set(target, Nan::New("unicodeTap").ToLocalChecked(),
+		Nan::GetFunction(Nan::New<FunctionTemplate>(unicodeTap)).ToLocalChecked());
+
+	Nan::Set(target, Nan::New("unicodeToggle").ToLocalChecked(),
+		Nan::GetFunction(Nan::New<FunctionTemplate>(unicodeToggle)).ToLocalChecked());
 
 	Nan::Set(target, Nan::New("typeString").ToLocalChecked(),
 		Nan::GetFunction(Nan::New<FunctionTemplate>(typeString)).ToLocalChecked());
